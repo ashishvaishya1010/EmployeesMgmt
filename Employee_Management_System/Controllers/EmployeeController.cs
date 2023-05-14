@@ -4,8 +4,10 @@ using Employee_Management_System.Model.DTO;
 using Employee_Management_System.Repository.IRepository;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Data;
 using System.Net;
+using System.Reflection.PortableExecutable;
 
 namespace Employee_Management_System.Controllers
 {
@@ -14,14 +16,20 @@ namespace Employee_Management_System.Controllers
     public class EmployeeController : ControllerBase
     {
         private readonly IEmployeesRepository _dbEmployees;
+        private readonly IDesignationRepository _dbDesignation;
+        private readonly IDepartmentRepository _dbDepartment;
         private readonly IMapper _mapper;
         protected APIResponse _response;
-        public EmployeeController(IEmployeesRepository dbUser, IMapper mapper)
+        private ApplicationDbContext db;
+        public EmployeeController(IEmployeesRepository dbUser, IMapper mapper, ApplicationDbContext dbContext, 
+            IDesignationRepository dbDesignation, IDepartmentRepository dbDepartment)
         {
             _dbEmployees = dbUser;
             _mapper = mapper;
             _response = new();
-
+            db = dbContext;
+            _dbDesignation = dbDesignation;
+            _dbDepartment = dbDepartment;
         }
 
         [HttpGet]
@@ -102,8 +110,15 @@ namespace Employee_Management_System.Controllers
                 {
                     return BadRequest();
                 }
-
-                Employees employees = _mapper.Map<Employees>(employeesCreateDTO);
+                if (await _dbDesignation.GetAsync(u => u.Id == employeesCreateDTO.Designation_Id) == null)
+                {
+                    return NotFound();
+                }
+                if (await _dbDepartment.GetAsync(u => u.Id == employeesCreateDTO.Department_Id) == null)
+                {
+                    return NotFound();
+                }
+                    Employees employees = _mapper.Map<Employees>(employeesCreateDTO);
                 await _dbEmployees.CreateAsync(employees);
                 _response.Result = _mapper.Map<EmployeesDTO>(employees);
                 _response.StatusCode = HttpStatusCode.OK;
@@ -128,10 +143,25 @@ namespace Employee_Management_System.Controllers
                 {
                     return BadRequest();
                 }
+                var employee = await _dbEmployees.GetAsync(v=>v.Id ==id, tracked: true);
+                if (employee == null) {
+                    return NotFound();
+                }
+                //var designation = await _dbDesignation.GetAsync(v=> v.Id == employeesUpdateDTO.Designation_Id);
+                if (await _dbDesignation.GetAsync(u => u.Id == employeesUpdateDTO.Designation_Id) == null) {
+                    return NotFound();
+                }
+                if (await _dbDepartment.GetAsync(u => u.Id == employeesUpdateDTO.Department_Id) == null)
+                {
+                    return NotFound();
+                }
+
+
+                db.Entry(employee).State = EntityState.Detached;
 
                 Employees model = _mapper.Map<Employees>(employeesUpdateDTO);
 
-
+                db.Entry(model).State = EntityState.Modified;
 
                 await _dbEmployees.UpdateAsync(model);
                 _response.StatusCode = HttpStatusCode.NoContent;
